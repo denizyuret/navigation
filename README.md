@@ -92,3 +92,9 @@ function mainflex()
 Word embeddings:
   word2vec's 300 dimensional word embeddings for vocab entries in task.
   data/embeddings.jld: Dict{WordStr,Vector}
+
+Data generation:
+datagen/data_generator.jl
+data generate ediyor
+generatedata(task::LangTask; numins=100)
+şu anda turnToX task olarak available
