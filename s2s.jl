@@ -240,9 +240,9 @@ function initstate(encoder)
 end
 
 # This should work for any combination of tuple/array
-oparams{T<:Number}(::KnetArray{T})=Adam()
-oparams{T<:Number}(::Array{T})=Adam()
-oparams(x)=map(oparams, x)
+oparams{T<:Number}(::KnetArray{T}; gclip=0, o...)=Adam(gclip=gclip)
+oparams{T<:Number}(::Array{T}; gclip=0, o...)=Adam(gclip=gclip)
+oparams(a; o...)=map(x->oparams(x;o...), a)
 
 # Print hierarchical structure for debugging
 function pstruct(x,r=0)
@@ -262,7 +262,7 @@ end
 
 function getconfig2()
     c = Dict()
-    c[:hidden] = [ rand(50:200) ] # multi-layer? dropout?, gclip?
+    c[:hidden] = [ rand(50:200) ] # multi-layer? dropout:done, gclip:done
     c[:embed1] = rand(100:600)
     c[:embed2] = rand(10:100)
     return c
@@ -326,12 +326,12 @@ function main(args=ARGS)
         ("--fast"; action=:store_true; help="skip loss printing for faster run")
         ("--loadfile"; help="Initialize model, vocab, and/or embeddings from file")
         ("--dropout"; arg_type=Float32; default=0.5f0; help="Dropout probability.")
+        ("--gclip"; arg_type=Float32; default=0f0; help="Gradient clip per weight matrix.")
         # TODO:
         # ("--test"; help="Apply model to input sequences in test file.")
         # ("--savefile"; help="Save final model to file")
         # ("--bestfile"; help="Save best model to file")
         # ("--batchsize"; arg_type=Int; default=10; help="Size of minibatches.")
-        # ("--gclip"; arg_type=Float64; default=0.0; help="Gradient clip.")
     end
     println(s.description)
     isa(args, AbstractString) && (args=split(args))
@@ -347,7 +347,7 @@ function main(args=ARGS)
     end
     o[:datas] = [readdata2(file,o[:vocab1],o[:vocab2]) for file in o[:train]]
     if !haskey(o,:model); o[:model] = initweights(; o...); end
-    o[:opt] = oparams(o[:model])
+    o[:opt] = oparams(o[:model]; o...)
     @printf("vocab1=%d vocab2=%d embed1=%d embed2=%d\n",
             length(o[:vocab1]), length(o[:vocab2]),
             length(o[:model][1][end][1]), length(o[:model][2][end-2][1]))
@@ -435,3 +435,8 @@ end
 # o = main("--train trn tst --seed 1 --load embed1.jld --dropout ?") # pretrained embeddings with dropout
 # (6,(0.44951436f0,0.70799834f0),(0.5994176f0,0.63386726f0)) # best accurary at dropout=0.6 epoch=6
 # (3,(0.48624966f0,0.68303007f0),(0.59056264f0,0.617849f0))  # best loss at dropout=0.3 epoch=3
+
+# Gradient clip may help:
+# o = main("--train trn tst --seed 1 --gclip 1")
+# (3,(0.56989175f0,0.6682184f0),(0.6557407f0,0.6270023f0)) # best loss
+# (4,(0.52349585f0,0.6991113f0),(0.6672982f0,0.6407323f0)) # best accuracy
