@@ -310,6 +310,47 @@ function savemaps()
     end
 end
 
+# goldensearch stuff
+
+function goldensearch(epochs=1)
+    _config = main("--epochs 0 --train trn tst --fast")
+
+    function goldenloss(x; x0=Float64[1,0,64,512,32]) # gclip,dropout,hidden,embed1,embed2
+        p = x0 .* exp(x)
+        if maximum(p) > 1000; return NaN; end
+        o = copy(_config)
+        o[:gclip] = p[1]
+        o[:dropout] = sigm(x[2])
+        o[:hidden] = [ round(Int, p[3]) ]
+        o[:embed1] = round(Int, p[4])
+        o[:embed2] = round(Int, p[5])
+
+        setseed(1)
+        o[:model] = initweights(; o...)
+        o[:opt] = oparams(o[:model]; o...)
+        o[:epochs] = epochs
+        #report(t,p,d)=println((t,[ (avgloss(p,di),accuracy(p,di)) for di in d ]...))
+        #report(0,o[:model],o[:datas])
+        s0 = initstate(o[:model][1])
+        best = 0
+        for epoch = 1:o[:epochs]
+            for (x,y) in o[:datas][1]
+                o[:grad] = s2sgrad(o[:model],s0,x,y; pdrop=o[:dropout])
+                Knet.update!(o[:model],o[:grad],o[:opt])
+            end
+            acc = accuracy(o[:model],o[:datas][2])
+            if acc > best; best = acc; end
+            #report(epoch,o[:model],o[:datas])
+        end
+        println((:acc,best,:gclip,o[:gclip],:dropout,o[:dropout],:hidden,o[:hidden],:embed1,o[:embed1],:embed2,o[:embed2])); flush(STDOUT)
+        return 1-best
+    end
+
+    goldensection(goldenloss,5)
+end
+
+
+### main
 
 function main(args=ARGS)
     s = ArgParseSettings()
@@ -333,10 +374,12 @@ function main(args=ARGS)
         # ("--bestfile"; help="Save best model to file")
         # ("--batchsize"; arg_type=Int; default=10; help="Size of minibatches.")
     end
-    println(s.description)
     isa(args, AbstractString) && (args=split(args))
     global o = parse_args(args, s; as_symbols=true)
-    println("opts=",[(k,v) for (k,v) in o]...)
+    if !o[:fast]
+        println(s.description)
+        println("opts=",[(k,v) for (k,v) in o]...)
+    end
     o[:seed] > 0 && setseed(o[:seed])
     o[:atype] = eval(parse(o[:atype]))
     o[:vocab1] = Dict(); o[:vocab2] = Dict(" <S> "=>1) # TODO: handle unk, eos, restricted vocab size
@@ -356,7 +399,7 @@ function main(args=ARGS)
     !o[:fast] && report(0,o[:model],o[:datas])
     istate = initstate(o[:model][1])
     for epoch = 1:o[:epochs]
-        @time for (x,y) in o[:datas][1]
+        for (x,y) in o[:datas][1]
             o[:grad] = s2sgrad(o[:model],istate,x,y; pdrop=o[:dropout])
             Knet.update!(o[:model],o[:grad],o[:opt])
         end
